@@ -1,0 +1,136 @@
+<html>
+    <head>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/leaflet.css" />
+
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/leaflet.js"></script>
+        <script src="https://www.mapquestapi.com/sdk/leaflet/v2.2/mq-map.js?key=lYrP4vF3Uk5zgTiGGuEzQGwGIVDGuy24"></script>
+        <script src="https://www.mapquestapi.com/sdk/leaflet/v2.2/mq-routing.js?key=lYrP4vF3Uk5zgTiGGuEzQGwGIVDGuy24"></script>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+        <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+      
+    <script src="https://www.mapquestapi.com/sdk/leaflet/v2.2/mq-geocoding.js?key=lYrP4vF3Uk5zgTiGGuEzQGwGIVDGuy24"></script>
+    </head>
+
+    <body style='border:0; margin: 0'>
+        <nav class="navbar navbar-inverse">
+            <div class="container-fluid">
+              <div class="navbar-header">
+                <a class="navbar-brand" href="#"> Map Website </a>
+              </div>
+              <ul class="nav navbar-nav">
+                <li class="active"><a href="#" class="username"> </a></li>
+                <li><a href="signin.html" onclick="leave();"> Logout </a></li>
+              </ul>
+            </div>
+            <script src = "app.js"></script>
+          </nav>
+        <div id='map' style='width: 100%; height:530px;'>
+            <script type="text/javascript">
+                window.onload = function() {
+    
+                    var popup = L.popup(),
+                    geocode,
+                    map;
+                    var finaldest,initialdest;
+                  var dir;
+                //to get the pinned point on the map with latitude and longitude points
+                map = L.map('map', {
+                        layers: MQ.mapLayer(),
+                        center: [ 38.890385, -77.031989 ],
+                        zoom: 14 })
+                    .on('click', function(e) {
+                        popup.setLatLng(e.latlng)
+                            .openOn(this);
+                  finaldest=e.latlng;
+                  geocode.reverse(e.latlng);
+                    });
+                geocode = MQ.geocode().on('success', function(e) {
+                    //to print details of pinned location if required
+                  popup.setContent(geocode.describeLocation(e.result.best));
+                  // to print the latitude and longitude points of the pinned location
+                  L.marker([ finaldest.lat, finaldest.lng ])
+                        .addTo(map)
+                        .bindPopup('<strong>' + finaldest.lat + ', ' + finaldest.lng + '</strong><br/>is your pinned location.')
+                        .openPopup()
+                        //sending all the data to the server
+                    senddata(initialdest.lat,initialdest.lng, finaldest.lat,finaldest.lng);
+                });
+    
+                    function geolocationErrorOccurred(geolocationSupported, popup, latLng) {
+                        popup.setLatLng(latLng);
+                        popup.setContent(geolocationSupported ?
+                                '<b>Error:</b> The Geolocation service failed.' :
+                                '<b>Error:</b> This browser doesn\'t support geolocation.');
+                        popup.openOn(geolocationMap);
+                    }
+                        // to get the current location of the individual 
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(function(position) {
+                            initialdest = {
+                                lat: position.coords.latitude,
+                                lng: position.coords.longitude
+                            };
+    
+                            popup.setLatLng(initialdest);
+                            popup.setContent('This is your current location');
+                            popup.openOn(map);
+                            map.setView(initialdest);
+                          L.marker([ initialdest.lat, initialdest.lng ])
+                        .addTo(map)
+                        .bindPopup('<strong>' + initialdest.lat + ', ' + initialdest.lng + '</strong><br/>is your current location.')
+                        .openPopup()
+                        }, function() {
+                            geolocationErrorOccurred(true, popup, map.getCenter());
+                        });
+                    } else
+                    {
+                        //No browser support geolocation service
+                        geolocationErrorOccurred(false, popup, map.getCenter());
+                    }
+
+                // to perform the routing between the initial or current location to the pinned location.
+                dir = MQ.routing.directions();
+
+                dir.route({
+                    locations: [
+                        { latLng: { lat: initialdest.lat, lng: initialdest.lng } },
+                        { latLng: { lat: finaldest.lat, lng: finaldest.lng } }
+                    ]
+                });
+
+                map.addLayer(MQ.routing.routeLayer({
+                    directions: dir,
+                    fitBounds: true
+                }));
+             // to send the data to broker (post)
+                var wsbroker = "localhost"; //mqtt websocket enabled broker
+                var wsport = 9001 // port for above
+                var client = new Paho.MQTT.Client(wsbroker, wsport,"myclientid_" + parseInt(Math.random() * 100, 10));
+                var data; //to send to mqtt broker
+                function senddata(a,b,c,d)
+                {
+                    data=JSON.stringify({'initiallat':a,'initiallong':b,'destlat':c,'destlong':d});
+                    $.post('http://localhost:1234/locations',data); //sends the coordinates to save in mongodb using express.
+                    client.connect(options);//connects to the broker 
+                }
+                var options = {
+                timeout: 3,
+                onSuccess: function () {
+                console.log("mqtt connected");
+                //use the below if you want to publish to a topic on connect
+                message = new Paho.MQTT.Message(data);
+                message.destinationName = "coe457/locations";
+                client.send(message);
+                },
+                onFailure: function (message) {
+                console.log("Connection failed: " + message.errorMessage);
+                }
+                };
+            }
+            </script>
+        </div>
+    </body>
+</html>
